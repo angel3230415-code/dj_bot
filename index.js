@@ -1,7 +1,5 @@
-const ffmpeg = require('ffmpeg-static');
-// El bot ahora usará la ruta que 'ffmpeg-static' le proporcione automáticamente.
 const { Client, GatewayIntentBits } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, getVoiceConnection } = require('@discordjs/voice');
 const play = require('play-dl');
 require('dotenv').config();
 
@@ -28,39 +26,45 @@ client.on('messageCreate', async (message) => {
     if (!voiceChannel) return message.reply('❌ ¡Entra a un canal de voz primero!');
 
     try {
+        // LIMPIEZA: Si ya había una conexión trabada, la borramos
+        const oldConnection = getVoiceConnection(message.guild.id);
+        if (oldConnection) oldConnection.destroy();
+
         const connection = joinVoiceChannel({
             channelId: voiceChannel.id,
             guildId: message.guild.id,
             adapterCreator: message.guild.voiceAdapterCreator,
         });
 
-        // Búsqueda simplificada
         let info = await play.search(args, { limit: 1 });
         if (info.length === 0) return message.reply('❌ No encontré nada.');
 
         message.channel.send(`🚀 Cargando: **${info[0].title}**...`);
 
-      let stream = await play.stream(info[0].url, {
-    discordPlayerCompatibility: true,
-    quality: 0 // Esto baja la calidad al mínimo para que cargue instantáneamente
-});
-        const resource = createAudioResource(stream.stream, {
-            inputType: stream.type
+        // OPTIMIZACIÓN: Forzamos el stream para que no se cuelgue en la nube
+        let stream = await play.stream(info[0].url, {
+            discordPlayerCompatibility: true,
+            quality: 0 
         });
 
+        const resource = createAudioResource(stream.stream, { inputType: stream.type });
         const player = createAudioPlayer();
+        
         player.play(resource);
         connection.subscribe(player);
 
-        message.reply(`🎶 Reproduciendo: **${info[0].title}**`);
+        player.on(AudioPlayerStatus.Playing, () => {
+            console.log(`Reproduciendo: ${info[0].title}`);
+        });
 
         player.on('error', error => {
-            console.error(`Error de audio: ${error.message}`);
+            console.error(`Error: ${error.message}`);
+            connection.destroy();
         });
 
     } catch (error) {
-        console.error("Error en el comando:", error);
-        message.reply('❌ Hubo un problema al conectar. Intenta de nuevo.');
+        console.error(error);
+        message.reply('❌ Error al conectar. Intenta de nuevo en unos segundos.');
     }
 });
 
