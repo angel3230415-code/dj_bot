@@ -69,3 +69,11 @@ client.on('messageCreate', async (message) => {
 });
 
 client.login(process.env.TOKEN);
+client.on('messageCreate', async (message) => {
+    if (message.content === '!reset') {
+        const connection = getVoiceConnection(message.guild.id);
+        if (connection) connection.destroy();
+        message.reply("✅ Conexión reseteada. Intenta !play de nuevo.");
+    }
+});
+
